@@ -289,9 +289,11 @@ class BC_Gaussian(BC):
         Returns:
             predictions (dict): dictionary containing network outputs
         """
+        # Validation likelihood must use learned scales, not rollout sampling noise.
         dists = self.nets["policy"].forward_train(
             obs_dict=batch["obs"], 
             goal_dict=batch["goal_obs"],
+            low_noise_eval=False,
         )
 
         # make sure that this is a batch of multivariate action distributions, so that
@@ -619,9 +621,11 @@ class BC_RNN_GMM(BC_RNN):
         Returns:
             predictions (dict): dictionary containing network outputs
         """
+        # Validation likelihood must use learned scales, not rollout sampling noise.
         dists = self.nets["policy"].forward_train(
             obs_dict=batch["obs"], 
             goal_dict=batch["goal_obs"],
+            low_noise_eval=False,
         )
 
         # make sure that this is a batch of multivariate action distributions, so that

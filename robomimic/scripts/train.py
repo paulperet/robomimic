@@ -69,6 +69,8 @@ def train(config, device, resume=False):
         sys.stdout = logger
         sys.stderr = logger
 
+    print("Training device: {}".format(device))
+
     # read config to set up metadata for observation modalities (e.g. detecting rgb observations)
     ObsUtils.initialize_obs_utils_with_config(config)
 

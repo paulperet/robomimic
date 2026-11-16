@@ -37,11 +37,12 @@ def hard_update(source, target):
 
 def get_torch_device(try_to_use_cuda):
     """
-    Return torch device. If using cuda (GPU), will also set cudnn.benchmark to True
+    Select CUDA, MPS, or CPU, in that order. CUDA also enables cudnn.benchmark
     to optimize CNNs.
 
     Args:
-        try_to_use_cuda (bool): if True and cuda is available, will use GPU
+        try_to_use_cuda (bool): legacy GPU flag; if True, use CUDA or MPS when
+            available. False always selects CPU.
 
     Returns:
         device (torch.Device): device to use for models
@@ -49,6 +50,8 @@ def get_torch_device(try_to_use_cuda):
     if try_to_use_cuda and torch.cuda.is_available():
         torch.backends.cudnn.benchmark = True
         device = torch.device("cuda:0")
+    elif try_to_use_cuda and torch.backends.mps.is_available():
+        device = torch.device("mps")
     else:
         device = torch.device("cpu")
     return device

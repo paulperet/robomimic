@@ -258,7 +258,9 @@ def contiguous(x):
 def to_device(x, device):
     """
     Sends all torch tensors in nested dictionary or list or tuple to device
-    @device, and returns a new nested structure.
+    @device, and returns a new nested structure. Float64 tensors are converted
+    to float32 when moving to MPS, which does not support float64. Other dtypes
+    (including uint8 images) are preserved.
 
     Args:
         x (dict or list or tuple): a possibly nested dictionary or list or tuple
@@ -267,10 +269,16 @@ def to_device(x, device):
     Returns:
         y (dict or list or tuple): new nested dict-list-tuple
     """
+    is_mps = device is not None and torch.device(device).type == "mps"
+
+    def move_tensor(tensor):
+        dtype = torch.float32 if is_mps and tensor.dtype == torch.float64 else tensor.dtype
+        return tensor.to(device=device, dtype=dtype)
+
     return recursive_dict_list_tuple_apply(
         x,
         {
-            torch.Tensor: lambda x, d=device: x.to(d),
+            torch.Tensor: move_tensor,
             type(None): lambda x: x,
         }
     )
@@ -311,10 +319,7 @@ def to_numpy(x):
         y (dict or list or tuple): new nested dict-list-tuple
     """
     def f(tensor):
-        if tensor.is_cuda:
-            return tensor.detach().cpu().numpy()
-        else:
-            return tensor.detach().numpy()
+        return tensor.detach().cpu().numpy()
     return recursive_dict_list_tuple_apply(
         x,
         {

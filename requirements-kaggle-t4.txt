@@ -1,0 +1,37 @@
+# Linux x86_64, CPython 3.12 / 3.13. See INSTALL_KAGGLE.md.
+# Run examples/setup_kaggle_t4.sh: egl_probe needs CMake < 4 installed FIRST.
+# Use an isolated venv; these Hugging Face pins conflict with Kaggle's base image.
+
+--extra-index-url https://download.pytorch.org/whl/cu126
+# Explicit local version tags prevent selecting PyPI's default CUDA build.
+torch==2.14.1+cu126
+torchvision==0.29.1+cu126
+
+numpy==2.5.4
+h5py==3.16.0
+psutil==7.2.2
+tqdm==4.70.1
+termcolor==3.3.0
+tensorboard==2.21.0
+tensorboardX==2.6.5
+imageio==2.38.1
+imageio-ffmpeg==0.8.1
+matplotlib==3.11.2
+pillow==13.0.0
+
+# Keep the diffusion EMA API and cached_download used by this checkout.
+huggingface-hub==0.25.2
+transformers==4.48.3
+tokenizers==0.21.4
+diffusers==0.11.1
+
+# Match the simulator stack validated on the local transport v1.5 dataset.
+robosuite==1.5.1
+mujoco==3.8.0
+mink==0.0.13
+numba==0.68.1
+scipy==1.17.1
+opencv-python==5.0.0.93
+PyOpenGL==3.1.10
+glfw==2.11.0
+egl_probe==1.0.2

@@ -229,7 +229,7 @@ def modify_config_for_dataset(config, task_name, dataset_type, hdf5_type, base_d
         if url is None:
             # infer file_name
             if task_name in ["lift", "can", "square", "tool_hang", "transport"]:
-                file_name = "{}_v141.hdf5".format(hdf5_type)
+                file_name = "{}_v15.hdf5".format(hdf5_type)
             elif task_name in ["lift_real", "can_real", "tool_hang_real"]:
                 file_name = "{}.hdf5".format(hdf5_type)
             else:

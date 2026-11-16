@@ -4,6 +4,7 @@ to provide a standardized environment API for training policies and interacting
 with metadata present in datasets.
 """
 import json
+import sys
 import numpy as np
 from copy import deepcopy
 
@@ -97,7 +98,7 @@ class EnvRobosuite(EB.EnvBase):
         kwargs.update(update_kwargs)
 
         if self._is_v1:
-            if kwargs["has_offscreen_renderer"]:
+            if kwargs["has_offscreen_renderer"] and sys.platform.startswith("linux"):
                 # ensure that we select the correct GPU device for rendering by testing for EGL rendering
                 # NOTE: this package should be installed from this link (https://github.com/StanfordVL/egl_probe)
                 import egl_probe

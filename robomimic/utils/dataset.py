@@ -256,6 +256,12 @@ class SequenceDataset(torch.utils.data.Dataset):
             self._hdf5_file.close()
         self._hdf5_file = None
 
+    def __getstate__(self):
+        """Let each DataLoader worker lazily open its own HDF5 file."""
+        state = self.__dict__.copy()
+        state["_hdf5_file"] = None
+        return state
+
     @contextmanager
     def hdf5_file_opened(self):
         """

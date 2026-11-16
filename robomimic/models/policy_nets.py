@@ -319,7 +319,7 @@ class GaussianActorNetwork(ActorNetwork):
             scale=(self.ac_dim,),
         )
 
-    def forward_train(self, obs_dict, goal_dict=None):
+    def forward_train(self, obs_dict, goal_dict=None, low_noise_eval=None):
         """
         Return full Gaussian distribution, which is useful for computing
         quantities necessary at train-time, like log-likelihood, KL 
@@ -328,6 +328,8 @@ class GaussianActorNetwork(ActorNetwork):
         Args:
             obs_dict (dict): batch of observations
             goal_dict (dict): if not None, batch of goal observations
+            low_noise_eval (bool or None): override rollout noise for likelihood
+                evaluation; None uses the policy setting
 
         Returns:
             dist (Distribution): Gaussian distribution
@@ -345,7 +347,9 @@ class GaussianActorNetwork(ActorNetwork):
             mean = torch.tanh(mean)
 
         # Calculate scale
-        if self.low_noise_eval and (not self.training):
+        if low_noise_eval is None:
+            low_noise_eval = self.low_noise_eval
+        if low_noise_eval and (not self.training):
             # override std value so that you always approximately sample the mean
             scale = torch.ones_like(mean) * 1e-4
         else:
@@ -491,7 +495,7 @@ class GMMActorNetwork(ActorNetwork):
             logits=(self.num_modes,),
         )
 
-    def forward_train(self, obs_dict, goal_dict=None):
+    def forward_train(self, obs_dict, goal_dict=None, low_noise_eval=None):
         """
         Return full GMM distribution, which is useful for computing
         quantities necessary at train-time, like log-likelihood, KL 
@@ -500,6 +504,8 @@ class GMMActorNetwork(ActorNetwork):
         Args:
             obs_dict (dict): batch of observations
             goal_dict (dict): if not None, batch of goal observations
+            low_noise_eval (bool or None): override rollout noise for likelihood
+                evaluation; None uses the policy setting
 
         Returns:
             dist (Distribution): GMM distribution
@@ -514,7 +520,9 @@ class GMMActorNetwork(ActorNetwork):
             means = torch.tanh(means)
 
         # Calculate scale
-        if self.low_noise_eval and (not self.training):
+        if low_noise_eval is None:
+            low_noise_eval = self.low_noise_eval
+        if low_noise_eval and (not self.training):
             # low-noise for all Gaussian dists
             scales = torch.ones_like(means) * 1e-4
         else:
@@ -828,7 +836,7 @@ class RNNGMMActorNetwork(RNNActorNetwork):
             logits=(self.num_modes,),
         )
 
-    def forward_train(self, obs_dict, goal_dict=None, rnn_init_state=None, return_state=False):
+    def forward_train(self, obs_dict, goal_dict=None, rnn_init_state=None, return_state=False, low_noise_eval=None):
         """
         Return full GMM distribution, which is useful for computing
         quantities necessary at train-time, like log-likelihood, KL 
@@ -839,6 +847,8 @@ class RNNGMMActorNetwork(RNNActorNetwork):
             goal_dict (dict): if not None, batch of goal observations
             rnn_init_state: rnn hidden state, initialize to zero state if set to None
             return_state (bool): whether to return hidden state
+            low_noise_eval (bool or None): override rollout noise for likelihood
+                evaluation; None uses the policy setting
 
         Returns:
             dists (Distribution): sequence of GMM distributions over the timesteps
@@ -866,7 +876,9 @@ class RNNGMMActorNetwork(RNNActorNetwork):
         if not self.use_tanh:
             means = torch.tanh(means)
 
-        if self.low_noise_eval and (not self.training):
+        if low_noise_eval is None:
+            low_noise_eval = self.low_noise_eval
+        if low_noise_eval and (not self.training):
             # low-noise for all Gaussian dists
             scales = torch.ones_like(means) * 1e-4
         else:
