@@ -3,6 +3,8 @@
 # Use an isolated venv; these Hugging Face pins conflict with Kaggle's base image.
 
 --extra-index-url https://download.pytorch.org/whl/cu126
+# Kaggle's Python startup hook also runs inside the isolated environment.
+wrapt>=1.17
 # Explicit local version tags prevent selecting PyPI's default CUDA build.
 torch==2.14.1+cu126
 torchvision==0.29.1+cu126

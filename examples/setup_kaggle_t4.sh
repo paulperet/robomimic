@@ -35,7 +35,56 @@ unset PYTHONPATH PYTHONHOME
 
 # egl_probe uses a legacy CMake project. Install this before pip builds it.
 "$KAGGLE_PYTHON" -m pip --python "$KAGGLE_VENV/bin/python" install --upgrade \
-    'pip>=25.1' 'setuptools<82' wheel 'cmake<4'
+    'pip>=25.1' 'setuptools<82' wheel 'cmake<4' packaging 'wrapt>=1.17'
+
+# Catch mixed source / requirements revisions before building EGL or downloading
+# the multi-GB CUDA stack. Read setup.py without executing its build code.
+"$KAGGLE_VENV/bin/python" - "$REPO_DIR" <<'PY'
+import ast
+from pathlib import Path
+import sys
+
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
+
+repo = Path(sys.argv[1])
+tree = ast.parse((repo / "setup.py").read_text())
+setup_call = next(
+    node for node in ast.walk(tree)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "setup"
+)
+dependencies = ast.literal_eval(next(
+    keyword.value for keyword in setup_call.keywords if keyword.arg == "install_requires"
+))
+pins = {}
+for line in (repo / "requirements-kaggle-t4.txt").read_text().splitlines():
+    line = line.split("#", 1)[0].strip()
+    if not line or line.startswith("-"):
+        continue
+    requirement = Requirement(line)
+    if requirement.marker is not None and not requirement.marker.evaluate():
+        continue
+    specifiers = list(requirement.specifier)
+    if len(specifiers) == 1 and specifiers[0].operator == "==" and "*" not in specifiers[0].version:
+        pins[canonicalize_name(requirement.name)] = specifiers[0].version
+
+conflicts = []
+for dependency in dependencies:
+    requirement = Requirement(dependency)
+    if requirement.marker is not None and not requirement.marker.evaluate():
+        continue
+    pin = pins.get(canonicalize_name(requirement.name))
+    if pin is not None and not requirement.specifier.contains(pin, prereleases=True):
+        conflicts.append(f"  setup.py: {dependency}; Kaggle requirements: {requirement.name}=={pin}")
+if conflicts:
+    raise SystemExit(
+        "setup.py and requirements-kaggle-t4.txt have incompatible dependency pins:\n"
+        + "\n".join(conflicts)
+        + "\nCopy the updated setup.py from the modified checkout and rerun this script."
+    )
+print("Source dependency pins match the Kaggle requirements.")
+PY
+
 # Build this package in the venv so its CMake launcher can import the cmake
 # Python package; pip's isolated build environment would hide that package.
 "$KAGGLE_VENV/bin/python" -m pip install --no-build-isolation 'egl_probe==1.0.2'
