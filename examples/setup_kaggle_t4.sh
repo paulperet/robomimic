@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Run with bash; the notebook invokes this without changing its own Python.
+# Run with bash from a writable checkout; no notebook or activation is required.
 set -euo pipefail
 
 REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 KAGGLE_VENV="${KAGGLE_VENV:-/tmp/robomimic-kaggle-venv}"
 KAGGLE_PYTHON="${KAGGLE_PYTHON:-python3}"
+# Keep the base interpreter after PATH starts preferring the new venv.
+KAGGLE_PYTHON="$("$KAGGLE_PYTHON" -c 'import sys; print(sys.executable)')"
 
 "$KAGGLE_PYTHON" - <<'PY'
 import platform
@@ -21,7 +23,10 @@ PY
 
 # Keep the multi-GB environment out of /kaggle/working notebook outputs.
 # Re-running the installer updates this venv; it never changes the base image.
-"$KAGGLE_PYTHON" -m venv "$KAGGLE_VENV"
+# Some hosted Python images cannot run ensurepip. Create the environment without
+# it, then use the base image's pip to install pip into this specific venv.
+# This also repairs an environment left partially created by the old installer.
+"$KAGGLE_PYTHON" -m venv --without-pip "$KAGGLE_VENV"
 export PATH="$KAGGLE_VENV/bin:$PATH"
 export PIP_REQUIRE_VIRTUALENV=true
 export PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -29,7 +34,7 @@ export PIP_NO_CACHE_DIR=1
 unset PYTHONPATH PYTHONHOME
 
 # egl_probe uses a legacy CMake project. Install this before pip builds it.
-"$KAGGLE_VENV/bin/python" -m pip install --upgrade \
+"$KAGGLE_PYTHON" -m pip --python "$KAGGLE_VENV/bin/python" install --upgrade \
     'pip>=25.1' 'setuptools<82' wheel 'cmake<4'
 # Build this package in the venv so its CMake launcher can import the cmake
 # Python package; pip's isolated build environment would hide that package.
@@ -38,5 +43,5 @@ unset PYTHONPATH PYTHONHOME
     -r "$REPO_DIR/requirements-kaggle-t4.txt" -e "$REPO_DIR"
 "$KAGGLE_VENV/bin/python" -m pip check
 
-# CUDA is required here; the optional renderer is checked separately by the notebook.
+# CUDA is required here. Run check_kaggle_t4.py without --skip-render to check EGL.
 "$KAGGLE_VENV/bin/python" "$REPO_DIR/examples/check_kaggle_t4.py" --skip-render
