@@ -28,6 +28,8 @@ PY
 # This also repairs an environment left partially created by the old installer.
 "$KAGGLE_PYTHON" -m venv --without-pip "$KAGGLE_VENV"
 export PATH="$KAGGLE_VENV/bin:$PATH"
+# Kaggle exports a Jupyter inline backend that is absent from the isolated venv.
+export MPLBACKEND=Agg
 export PIP_REQUIRE_VIRTUALENV=true
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PIP_NO_CACHE_DIR=1

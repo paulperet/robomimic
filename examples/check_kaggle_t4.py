@@ -71,6 +71,10 @@ def main():
     parser.add_argument("--skip-render", action="store_true", help="Check training without simulator rendering.")
     args = parser.parse_args()
 
+    # Override the notebook kernel's inherited inline backend before importing
+    # robomimic.algo, which imports matplotlib.pyplot during registration.
+    os.environ["MPLBACKEND"] = "Agg"
+
     # These must be set before importing MuJoCo or PyOpenGL in this process.
     os.environ.setdefault("MUJOCO_GL", "egl")
     os.environ.setdefault("PYOPENGL_PLATFORM", "egl")
