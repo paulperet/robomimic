@@ -37,8 +37,9 @@ unset PYTHONPATH PYTHONHOME
 "$KAGGLE_PYTHON" -m pip --python "$KAGGLE_VENV/bin/python" install --upgrade \
     'pip>=25.1' 'setuptools<82' wheel 'cmake<4' packaging 'wrapt>=1.17'
 
-# Catch mixed source / requirements revisions before building EGL or downloading
-# the multi-GB CUDA stack. Read setup.py without executing its build code.
+# Align the two legacy upstream pins before building EGL or downloading CUDA.
+# Preserve a backup and stop on any other incompatible dependency declarations.
+# Read setup.py without executing its build code.
 "$KAGGLE_VENV/bin/python" - "$REPO_DIR" <<'PY'
 import ast
 from pathlib import Path
@@ -48,14 +49,17 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
 repo = Path(sys.argv[1])
-tree = ast.parse((repo / "setup.py").read_text())
+setup_path = repo / "setup.py"
+setup_source = setup_path.read_bytes().decode("utf-8")
+tree = ast.parse(setup_source)
 setup_call = next(
     node for node in ast.walk(tree)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "setup"
 )
-dependencies = ast.literal_eval(next(
+dependency_node = next(
     keyword.value for keyword in setup_call.keywords if keyword.arg == "install_requires"
-))
+)
+dependencies = ast.literal_eval(dependency_node)
 pins = {}
 for line in (repo / "requirements-kaggle-t4.txt").read_text().splitlines():
     line = line.split("#", 1)[0].strip()
@@ -68,20 +72,54 @@ for line in (repo / "requirements-kaggle-t4.txt").read_text().splitlines():
     if len(specifiers) == 1 and specifiers[0].operator == "==" and "*" not in specifiers[0].version:
         pins[canonicalize_name(requirement.name)] = specifiers[0].version
 
+legacy_pins = {
+    "huggingface-hub": ("0.23.4", "0.25.2"),
+    "transformers": ("4.41.2", "4.48.3"),
+}
+repairs = []
 conflicts = []
-for dependency in dependencies:
+for dependency, value_node in zip(dependencies, dependency_node.elts):
     requirement = Requirement(dependency)
     if requirement.marker is not None and not requirement.marker.evaluate():
         continue
-    pin = pins.get(canonicalize_name(requirement.name))
+    name = canonicalize_name(requirement.name)
+    pin = pins.get(name)
     if pin is not None and not requirement.specifier.contains(pin, prereleases=True):
-        conflicts.append(f"  setup.py: {dependency}; Kaggle requirements: {requirement.name}=={pin}")
+        legacy = legacy_pins.get(name)
+        if (
+            legacy is not None and pin == legacy[1]
+            and str(requirement.specifier) == f"=={legacy[0]}"
+            and not requirement.extras and requirement.marker is None
+            and dependency in ast.get_source_segment(setup_source, value_node)
+        ):
+            repairs.append((dependency, dependency.replace(legacy[0], pin, 1), value_node))
+        else:
+            conflicts.append(f"  setup.py: {dependency}; Kaggle requirements: {requirement.name}=={pin}")
 if conflicts:
     raise SystemExit(
         "setup.py and requirements-kaggle-t4.txt have incompatible dependency pins:\n"
         + "\n".join(conflicts)
         + "\nCopy the updated setup.py from the modified checkout and rerun this script."
     )
+if repairs:
+    backup_path = repo / ".cache" / "kaggle" / "setup.py.before-kaggle"
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    if not backup_path.exists():
+        backup_path.write_bytes(setup_source.encode("utf-8"))
+    source_bytes = setup_source.encode("utf-8")
+    line_offsets = [0]
+    for line in setup_source.splitlines(keepends=True):
+        line_offsets.append(line_offsets[-1] + len(line.encode("utf-8")))
+    # AST columns are UTF-8 byte offsets. Edit only the dependency literals,
+    # backwards through the file so other comments and source stay intact.
+    for previous, updated, node in sorted(repairs, key=lambda item: (item[2].lineno, item[2].col_offset), reverse=True):
+        start = line_offsets[node.lineno - 1] + node.col_offset
+        end = line_offsets[node.end_lineno - 1] + node.end_col_offset
+        literal = source_bytes[start:end].decode("utf-8").replace(previous, updated, 1)
+        source_bytes = source_bytes[:start] + literal.encode("utf-8") + source_bytes[end:]
+        print(f"Updating setup.py: {previous} -> {updated}")
+    setup_path.write_bytes(source_bytes)
+    print(f"Original setup.py backup: {backup_path}")
 print("Source dependency pins match the Kaggle requirements.")
 PY
 
