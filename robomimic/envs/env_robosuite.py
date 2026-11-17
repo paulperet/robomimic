@@ -212,6 +212,28 @@ class EnvRobosuite(EB.EnvBase):
             return self.get_observation()
         return None
 
+    def _ensure_offscreen_buffer_size(self, height, width):
+        """Grow MuJoCo's offscreen buffer without recreating its GL context."""
+        if not self.is_v15_or_higher or height is None or width is None:
+            return
+        context = self.env.sim._render_context_offscreen
+        if context is None:
+            return
+        if width <= context.con.offWidth and height <= context.con.offHeight:
+            return
+
+        # robosuite 1.5.1 frees and recreates MjrContext when growing the buffer.
+        # Under EGL that can fail with an incomplete default framebuffer and
+        # leave context.con deleted. Resize the existing offscreen buffers instead.
+        import mujoco
+        new_width = max(width, context.con.offWidth)
+        new_height = max(height, context.con.offHeight)
+        context.gl_ctx.make_current()
+        mujoco.mjr_resizeOffscreen(new_width, new_height, context.con)
+        mujoco.mjr_setBuffer(mujoco.mjtFramebuffer.mjFB_OFFSCREEN, context.con)
+        self.env.sim.model.vis.global_.offwidth = new_width
+        self.env.sim.model.vis.global_.offheight = new_height
+
     def render(self, mode="human", height=None, width=None, camera_name=None):
         """
         Render from simulation to either an on-screen window or off-screen to RGB array.
@@ -231,6 +253,7 @@ class EnvRobosuite(EB.EnvBase):
             self.env.viewer.set_camera(cam_id)
             return self.env.render()
         elif mode == "rgb_array":
+            self._ensure_offscreen_buffer_size(height=height, width=width)
             im = self.env.sim.render(height=height, width=width, camera_name=camera_name)
             # if self.use_depth_obs:
             #     # render() returns a tuple when self.use_depth_obs=True

@@ -42,28 +42,55 @@ def check_cuda():
 
 
 def check_renderer():
-    import egl_probe
-    import mujoco
-    import numpy as np
+    import sys
+    from types import SimpleNamespace
 
-    print(f"EGL probe devices: {egl_probe.get_available_devices()}")
-    model = mujoco.MjModel.from_xml_string("""
+    import numpy as np
+    from robosuite.utils.binding_utils import MjRenderContextOffscreen, MjSim
+    from robomimic.envs.env_robosuite import EnvRobosuite
+
+    if sys.platform.startswith("linux"):
+        import egl_probe
+        print(f"EGL probe devices: {egl_probe.get_available_devices()}")
+
+    # Exercise robosuite's actual rendering path, including the jump from policy
+    # observations to 512px video. A small mujoco.Renderer test misses this bug.
+    sim = MjSim.from_xml_string("""
         <mujoco>
+          <visual><global offwidth="84" offheight="84"/></visual>
           <worldbody>
             <light pos="0 0 3"/>
+            <camera name="agentview" pos="0 -3 2" xyaxes="1 0 0 0 .55 .83"/>
             <geom type="plane" size="2 2 .1" rgba=".3 .3 .3 1"/>
             <geom type="sphere" pos="0 0 .3" size=".3" rgba="1 .1 .1 1"/>
           </worldbody>
         </mujoco>
     """)
-    data = mujoco.MjData(model)
-    mujoco.mj_forward(model, data)
-    with mujoco.Renderer(model, height=84, width=84) as renderer:
-        renderer.update_scene(data)
-        pixels = renderer.render()
-    if pixels.shape != (84, 84, 3) or not np.isfinite(pixels).all() or pixels.std() == 0:
-        raise RuntimeError("MuJoCo returned an invalid or uniform image.")
-    print(f"Headless MuJoCo {os.environ['MUJOCO_GL']} rendering passed: {pixels.shape}.")
+    try:
+        context = MjRenderContextOffscreen(sim, device_id=int(os.environ.get("MUJOCO_EGL_DEVICE_ID", "0")))
+        original_con = context.con
+        # Use the real robomimic wrapper with a minimal scene, without loading
+        # a dataset, policy or full robot environment.
+        env = EnvRobosuite.__new__(EnvRobosuite)
+        env.env = SimpleNamespace(sim=sim)
+        env._init_kwargs = {"camera_names": ["agentview"]}
+        initial = None
+        for size in (84, 512, 84, 512):
+            pixels = env.render(mode="rgb_array", height=size, width=size)
+            if pixels.shape != (size, size, 3) or not np.isfinite(pixels).all() or pixels.std() == 0:
+                raise RuntimeError("MuJoCo returned an invalid or uniform image.")
+            if context.con is not original_con:
+                raise RuntimeError("Video resizing unexpectedly replaced MjrContext.")
+            if size == 84:
+                if initial is None:
+                    initial = pixels.copy()
+                else:
+                    # MSAA rounding can move edge pixels by one 8-bit level
+                    # when the backing framebuffer changes dimensions.
+                    np.testing.assert_allclose(initial.astype(np.int16), pixels.astype(np.int16), rtol=0, atol=1)
+        print("Robosuite rendering passed: 84 -> 512 -> 84 -> 512 pixels; context retained.")
+    finally:
+        sim.free()
 
 
 def main():

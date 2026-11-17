@@ -132,5 +132,10 @@ PY
     -r "$REPO_DIR/requirements-kaggle-t4.txt" -e "$REPO_DIR"
 "$KAGGLE_VENV/bin/python" -m pip check
 
-# CUDA is required here. Run check_kaggle_t4.py without --skip-render to check EGL.
-"$KAGGLE_VENV/bin/python" "$REPO_DIR/examples/check_kaggle_t4.py" --skip-render
+# Check video-sized rendering before a long run reaches its first rollout.
+# Training from stored images without rollouts can explicitly skip this check.
+if [[ "${KAGGLE_SKIP_RENDER_CHECK:-0}" == "1" ]]; then
+    "$KAGGLE_VENV/bin/python" "$REPO_DIR/examples/check_kaggle_t4.py" --skip-render
+else
+    "$KAGGLE_VENV/bin/python" "$REPO_DIR/examples/check_kaggle_t4.py"
+fi
